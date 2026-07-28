@@ -5,8 +5,6 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 type Task = {
   id: string;
   title: string;
-  progress?: string;
-  percent?: number;
   next: string;
   status: "current" | "paused" | "done";
   parentId?: string;
@@ -22,7 +20,6 @@ const initialBoard: Board = {
     {
       id: "t1",
       title: "建立主线看板",
-      percent: 0,
       next: "把你真实正在做的一件事写进来",
       status: "current", projectId: "p1",
     },
@@ -36,10 +33,6 @@ type ProjectTask = Task & { projectId: string };
 
 function id() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function percentOf(task: Task) {
-  return typeof task.percent === "number" ? Math.max(0, Math.min(100, task.percent)) : 0;
 }
 
 function RouteTree({ task, tasks, currentId, collapsedIds, onSelect, onToggle }: { task: ProjectTask; tasks: ProjectTask[]; currentId: string; collapsedIds: string[]; onSelect: (id: string) => void; onToggle: (id: string) => void }) {
@@ -86,11 +79,7 @@ export default function Home() {
   );
   const projectTasks = board.tasks.filter((task) => task.projectId === board.activeProjectId);
   const routeRoots = projectTasks.filter((task) => !task.parentId || !projectTasks.some((candidate) => candidate.id === task.parentId));
-  const root = useMemo(() => {
-    let node = current;
-    while (node?.parentId) node = board.tasks.find((task) => task.id === node.parentId) ?? node;
-    return node;
-  }, [board.tasks, current]);
+  const parentTask = current?.parentId ? board.tasks.find((task) => task.id === current.parentId) : undefined;
 
   function setCurrent(taskId: string) {
     const ancestors: string[] = [];
@@ -117,20 +106,18 @@ export default function Home() {
     setBoard((old) => ({ ...old, activeProjectId: projectId, activeTaskId: task.id }));
   }
 
-  function finishAndReturn() {
-    if (!current?.parentId) return;
-    const parentId = current.parentId;
+  function finishAndReturn(taskId: string, parentId: string) {
     setBoard((old) => ({
       ...old,
       activeTaskId: parentId,
-      tasks: old.tasks.map((task) => task.id === current.id ? { ...task, status: "done", percent: 100 } : task.id === parentId ? { ...task, status: "current" } : task.status),
+      tasks: old.tasks.map((task) => task.id === taskId ? { ...task, status: "done" } : task.id === parentId ? { ...task, status: "current" } : task.status),
     }));
   }
 
-  function updateCurrent(field: "next" | "percent", value: string | number) {
+  function updateCurrent(value: string) {
     setBoard((old) => ({
       ...old,
-      tasks: old.tasks.map((task) => task.id === old.activeTaskId ? { ...task, [field]: value } : task),
+      tasks: old.tasks.map((task) => task.id === old.activeTaskId ? { ...task, next: value } : task),
     }));
   }
 
@@ -139,7 +126,7 @@ export default function Home() {
       const mark = task.status === "done" ? "x" : " ";
       const currentMark = task.id === current.id ? " ← 你在这里" : "";
       const children = projectTasks.filter((item) => item.parentId === task.id);
-      return [`${"  ".repeat(depth)}- [${mark}] ${task.title}（${percentOf(task)}%）${currentMark}`, ...children.flatMap((child) => taskLine(child, depth + 1))];
+      return [`${"  ".repeat(depth)}- [${mark}] ${task.title}${currentMark}`, ...children.flatMap((child) => taskLine(child, depth + 1))];
     }
     return [`# ${project.name}`, `> 目标：${project.goal || "未填写"}`, "", ...routeRoots.flatMap((task) => taskLine(task, 0)), ""].join("\n");
   }
@@ -178,7 +165,6 @@ export default function Home() {
     const task: Task & { projectId: string } = {
       id: id(), title, parentId: current.id, status: "paused",
       projectId: board.activeProjectId,
-      percent: 0,
       next: "",
     };
     setBoard((old) => ({ ...old, tasks: [...old.tasks, task] }));
@@ -192,7 +178,7 @@ export default function Home() {
     if (!name) return;
     const projectId = id();
     const newProject = { id: projectId, name, goal: String(form.get("goal") || "").trim() };
-    const firstTask = { id: id(), projectId, title: String(form.get("task") || "").trim() || "确定第一步", percent: 0, next: "写下现在要做的第一步", status: "current" as const };
+    const firstTask = { id: id(), projectId, title: String(form.get("task") || "").trim() || "确定第一步", next: "写下现在要做的第一步", status: "current" as const };
     setBoard((old) => ({ ...old, projects: [...old.projects, newProject], tasks: [...old.tasks.map((task) => task.status === "current" ? { ...task, status: "paused" as const } : task), firstTask], activeProjectId: projectId, activeTaskId: firstTask.id }));
     setShowProject(false);
   }
@@ -214,9 +200,8 @@ export default function Home() {
       <section className="current-card">
         <p className="eyebrow">{current.parentId ? "这件事来自上一条线" : "当前任务 · 只保留一个"}</p>
         <h2>{current.title}</h2>
-        <label className="progress-control"><span>进度 <output>{percentOf(current)}%</output></span><input type="range" min="0" max="100" step="5" value={percentOf(current)} onChange={(e) => updateCurrent("percent", Number(e.target.value))} aria-label="任务进度" /><small>刚开始 <span>进行中</span> 快完成</small></label>
-        <label className="next">我现在只做这一步<textarea value={current.next} onChange={(e) => updateCurrent("next", e.target.value)} /></label>
-        {current.parentId && <button className="return-button" onClick={finishAndReturn}>完成并回到「{root?.title}」</button>}
+        <label className="next">我现在只做这一步<textarea value={current.next} onChange={(e) => updateCurrent(e.target.value)} /></label>
+        {current.parentId && parentTask && <button type="button" className="return-button" onClick={() => finishAndReturn(current.id, parentTask.id)}>完成并回到「{parentTask.title}」</button>}
       </section>
 
       <section className="path" aria-label="任务路线">
