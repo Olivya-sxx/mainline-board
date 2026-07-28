@@ -37,15 +37,20 @@ function id() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function RouteTree({ task, tasks, currentId, onSelect }: { task: ProjectTask; tasks: ProjectTask[]; currentId: string; onSelect: (id: string) => void }) {
-  const children = tasks.filter((item) => item.parentId === task.id && item.status !== "done");
+function RouteTree({ task, tasks, currentId, collapsedIds, onSelect, onToggle }: { task: ProjectTask; tasks: ProjectTask[]; currentId: string; collapsedIds: string[]; onSelect: (id: string) => void; onToggle: (id: string) => void }) {
+  const children = tasks.filter((item) => item.parentId === task.id);
   const isCurrent = task.id === currentId;
+  const isDone = task.status === "done";
+  const isCollapsed = collapsedIds.includes(task.id);
   return (
-    <li>
-      <button className={`route-node ${isCurrent ? "is-current" : ""}`} onClick={() => onSelect(task.id)}>
-        <span>{task.title}</span>{isCurrent && <em>你在这里</em>}
-      </button>
-      {children.length > 0 && <ul>{children.map((child) => <RouteTree key={child.id} task={child} tasks={tasks} currentId={currentId} onSelect={onSelect} />)}</ul>}
+    <li className={isDone ? "is-done" : ""}>
+      <div className="route-row">
+        {children.length > 0 && <button className="collapse-button" aria-label={isCollapsed ? "展开下级任务" : "折叠下级任务"} onClick={() => onToggle(task.id)}>{isCollapsed ? "+" : "−"}</button>}
+        <button className={`route-node ${isCurrent ? "is-current" : ""}`} onClick={() => onSelect(task.id)}>
+          {isDone && <b aria-label="已完成">✓</b>}<span>{task.title}</span>{isCurrent && <em>你在这里</em>}
+        </button>
+      </div>
+      {children.length > 0 && !isCollapsed && <ul>{children.map((child) => <RouteTree key={child.id} task={child} tasks={tasks} currentId={currentId} collapsedIds={collapsedIds} onSelect={onSelect} onToggle={onToggle} />)}</ul>}
     </li>
   );
 }
@@ -55,6 +60,8 @@ export default function Home() {
   const [ready, setReady] = useState(false);
   const [showBranch, setShowBranch] = useState(false);
   const [showProject, setShowProject] = useState(false);
+  const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem(storageKey);
@@ -73,6 +80,7 @@ export default function Home() {
     [board.tasks, current?.id],
   );
   const projectTasks = board.tasks.filter((task) => task.projectId === board.activeProjectId);
+  const routeRoots = projectTasks.filter((task) => !task.parentId || !projectTasks.some((candidate) => candidate.id === task.parentId));
   const root = useMemo(() => {
     let node = current;
     while (node?.parentId) node = board.tasks.find((task) => task.id === node.parentId) ?? node;
@@ -80,11 +88,22 @@ export default function Home() {
   }, [board.tasks, current]);
 
   function setCurrent(taskId: string) {
+    const ancestors: string[] = [];
+    let parentId = board.tasks.find((task) => task.id === taskId)?.parentId;
+    while (parentId) {
+      ancestors.push(parentId);
+      parentId = board.tasks.find((task) => task.id === parentId)?.parentId;
+    }
+    setCollapsedIds((old) => old.filter((id) => !ancestors.includes(id)));
     setBoard((old) => ({
       ...old,
       activeTaskId: taskId,
       tasks: old.tasks.map((task) => ({ ...task, status: task.id === taskId ? "current" : task.status === "current" ? "paused" : task.status })),
     }));
+  }
+
+  function toggleCollapsed(taskId: string) {
+    setCollapsedIds((old) => old.includes(taskId) ? old.filter((id) => id !== taskId) : [...old, taskId]);
   }
 
   function switchProject(projectId: string) {
@@ -108,6 +127,42 @@ export default function Home() {
       ...old,
       tasks: old.tasks.map((task) => task.id === old.activeTaskId ? { ...task, [field]: value } : task),
     }));
+  }
+
+  function routeMarkdown() {
+    function taskLine(task: ProjectTask, depth: number): string[] {
+      const mark = task.status === "done" ? "x" : " ";
+      const currentMark = task.id === current.id ? " ← 你在这里" : "";
+      const children = projectTasks.filter((item) => item.parentId === task.id);
+      return [`${"  ".repeat(depth)}- [${mark}] ${task.title}${currentMark}`, ...children.flatMap((child) => taskLine(child, depth + 1))];
+    }
+    return [`# ${project.name}`, `> 目标：${project.goal || "未填写"}`, "", ...routeRoots.flatMap((task) => taskLine(task, 0)), ""].join("\n");
+  }
+
+  async function copyMarkdown() {
+    const markdown = routeMarkdown();
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(markdown);
+    } else {
+      const area = document.createElement("textarea");
+      area.value = markdown;
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  }
+
+  function downloadMarkdown() {
+    const file = new Blob([routeMarkdown()], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${project.name || "主线看板"}.md`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   function addBranch(event: FormEvent<HTMLFormElement>) {
@@ -143,7 +198,7 @@ export default function Home() {
     <main>
       <header className="topbar">
         <div><p className="eyebrow">主线看板</p><h1>你现在在这里</h1></div>
-        <div className="project-actions"><select aria-label="切换项目" value={project.id} onChange={(e) => switchProject(e.target.value)}>{board.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="text-button" onClick={() => setShowProject(true)}>+ 新项目</button></div>
+        <div className="project-actions"><button className="text-button" onClick={copyMarkdown}>{copied ? "已复制" : "复制 Markdown"}</button><button className="text-button" onClick={downloadMarkdown}>下载 .md</button><select aria-label="切换项目" value={project.id} onChange={(e) => switchProject(e.target.value)}>{board.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="text-button" onClick={() => setShowProject(true)}>+ 新项目</button></div>
       </header>
 
       <section className="orientation" aria-label="当前位置">
@@ -152,7 +207,7 @@ export default function Home() {
       </section>
 
       <section className="current-card">
-        <p className="eyebrow">{current.parentId ? "你正在处理一条岔路" : "当前任务 · 只保留一个"}</p>
+        <p className="eyebrow">{current.parentId ? "这件事来自上一条线" : "当前任务 · 只保留一个"}</p>
         <h2>{current.title}</h2>
         <label>我做到哪里了<textarea value={current.progress} onChange={(e) => updateCurrent("progress", e.target.value)} /></label>
         <label className="next">我现在只做这一步<textarea value={current.next} onChange={(e) => updateCurrent("next", e.target.value)} /></label>
@@ -161,18 +216,18 @@ export default function Home() {
 
       <section className="path" aria-label="任务路线">
         <p className="eyebrow">你的路线</p>
-        <p className="route-note">主线一直留在图上；你点进岔路时，位置标记会移动。</p>
-        {root && <ul className="route-tree"><RouteTree task={root} tasks={projectTasks} currentId={current.id} onSelect={setCurrent} /></ul>}
+        <p className="route-note">每件小事都能沿着“来自”往上追；点 − 可收起一整支路线。</p>
+        {routeRoots.length > 0 && <ul className="route-tree">{routeRoots.map((task) => <RouteTree key={task.id} task={task} tasks={projectTasks} currentId={current.id} collapsedIds={collapsedIds} onSelect={setCurrent} onToggle={toggleCollapsed} />)}</ul>}
       </section>
 
       <section className="branches">
-        <div className="section-heading"><div><p className="eyebrow">临时岔路</p><h2>从这里离开，也能回到这里</h2></div><button className="outline-button" onClick={() => setShowBranch(true)}>+ 记下岔路</button></div>
-        {branches.length === 0 ? <p className="empty">暂时没有岔路。想到别的事时记在这里，主线不会丢。</p> : (
+        <div className="section-heading"><div><p className="eyebrow">从这里长出的任务</p><h2>它们都记得自己来自哪里</h2></div><button className="outline-button" onClick={() => setShowBranch(true)}>+ 新任务</button></div>
+        {branches.length === 0 ? <p className="empty">暂时没有从这里长出的任务。</p> : (
           <div className="branch-list">{branches.map((branch) => <article className="branch" key={branch.id}><div><p>{branch.title}</p><small>{branch.next}</small></div><button onClick={() => setCurrent(branch.id)}>去处理</button></article>)}</div>
         )}
       </section>
 
-      {showBranch && <dialog open className="dialog"><form method="dialog" onSubmit={addBranch}><div className="section-heading"><h2>记下岔路</h2><button type="button" className="close" onClick={() => setShowBranch(false)}>×</button></div><label>突然想到什么<input name="title" autoFocus placeholder="例如：整理另一个项目的资料" /></label><label>它现在做到哪里<input name="progress" placeholder="例如：只有一个念头" /></label><label>下次从哪一步继续<input name="next" placeholder="例如：列出要整理的文件" /></label><button className="primary-button" type="submit">挂到当前任务上</button></form></dialog>}
+      {showBranch && <dialog open className="dialog"><form method="dialog" onSubmit={addBranch}><div className="section-heading"><h2>从「{current.title}」长出新任务</h2><button type="button" className="close" onClick={() => setShowBranch(false)}>×</button></div><label>这件事叫什么<input name="title" autoFocus placeholder="例如：整理另一个项目的资料" /></label><label>它现在做到哪里<input name="progress" placeholder="例如：只有一个念头" /></label><label>下次从哪一步继续<input name="next" placeholder="例如：列出要整理的文件" /></label><button className="primary-button" type="submit">记下来源关系</button></form></dialog>}
       {showProject && <dialog open className="dialog"><form method="dialog" onSubmit={addProject}><div className="section-heading"><h2>新项目</h2><button type="button" className="close" onClick={() => setShowProject(false)}>×</button></div><label>项目名称<input name="name" autoFocus placeholder="例如：旅行计划" /></label><label>最终想完成什么<input name="goal" placeholder="例如：确定路线并订好行程" /></label><label>这个项目的第一步<input name="task" placeholder="例如：列出行程约束" /></label><button className="primary-button" type="submit">建立项目并进入</button></form></dialog>}
     </main>
   );
