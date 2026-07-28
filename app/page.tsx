@@ -29,9 +29,20 @@ const initialBoard: Board = {
   activeTaskId: "t1", activeProjectId: "p1",
 };
 
-const storageKey = "mainline-board-v3";
+const storageKey = "mainline-board-v5";
 
 type ProjectTask = Task & { projectId: string };
+
+function restoreBoard(value: unknown): Board {
+  if (!value || typeof value !== "object") return initialBoard;
+  const saved = value as Partial<Board>;
+  const projects = Array.isArray(saved.projects) ? saved.projects.filter((project): project is Project => Boolean(project?.id && project.name)).map((project) => ({ ...project, goal: project.goal || "" })) : [];
+  const tasks = Array.isArray(saved.tasks) ? saved.tasks.filter((task): task is ProjectTask => Boolean(task?.id && task.title && task.projectId)).map((task) => ({ ...task, progress: task.progress || "还没开始", next: task.next || "", status: task.status === "done" || task.status === "paused" ? task.status : "current" })) : [];
+  if (!projects.length || !tasks.length) return initialBoard;
+  const activeTaskId = tasks.some((task) => task.id === saved.activeTaskId) ? saved.activeTaskId! : tasks[0].id;
+  const activeProjectId = projects.some((project) => project.id === saved.activeProjectId) ? saved.activeProjectId! : tasks.find((task) => task.id === activeTaskId)!.projectId;
+  return { projects, tasks, activeTaskId, activeProjectId };
+}
 
 function id() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -65,7 +76,13 @@ export default function Home() {
 
   useEffect(() => {
     const saved = localStorage.getItem(storageKey);
-    if (saved) setBoard(JSON.parse(saved));
+    if (saved) {
+      try {
+        setBoard(restoreBoard(JSON.parse(saved)));
+      } catch {
+        setBoard(initialBoard);
+      }
+    }
     setReady(true);
   }, []);
 
@@ -81,11 +98,7 @@ export default function Home() {
   );
   const projectTasks = board.tasks.filter((task) => task.projectId === board.activeProjectId);
   const routeRoots = projectTasks.filter((task) => !task.parentId || !projectTasks.some((candidate) => candidate.id === task.parentId));
-  const root = useMemo(() => {
-    let node = current;
-    while (node?.parentId) node = board.tasks.find((task) => task.id === node.parentId) ?? node;
-    return node;
-  }, [board.tasks, current]);
+  const parentTask = current?.parentId ? board.tasks.find((task) => task.id === current.parentId) : undefined;
 
   function setCurrent(taskId: string) {
     const ancestors: string[] = [];
@@ -112,14 +125,19 @@ export default function Home() {
     setBoard((old) => ({ ...old, activeProjectId: projectId, activeTaskId: task.id }));
   }
 
-  function finishAndReturn() {
-    if (!current?.parentId) return;
-    const parentId = current.parentId;
-    setBoard((old) => ({
-      ...old,
-      activeTaskId: parentId,
-      tasks: old.tasks.map((task) => task.id === current.id ? { ...task, status: "done" } : task.id === parentId ? { ...task, status: "current" } : task.status),
-    }));
+  function finishAndReturn(taskId: string, parentId: string) {
+    setBoard((old) => {
+      const tasks = old.tasks.filter((task): task is ProjectTask => Boolean(task));
+      const parent = tasks.find((task) => task.id === parentId);
+      if (!parent) return old;
+      const updatedTasks = tasks.map((task) => task.id === taskId ? { ...task, status: "done" } : task.id === parent.id ? { ...task, status: "current" } : task);
+      return {
+        ...old,
+        activeTaskId: parent.id,
+        activeProjectId: parent.projectId,
+        tasks: updatedTasks,
+      };
+    });
   }
 
   function updateCurrent(field: "progress" | "next", value: string) {
@@ -173,8 +191,8 @@ export default function Home() {
     const task: Task & { projectId: string } = {
       id: id(), title, parentId: current.id, status: "paused",
       projectId: board.activeProjectId,
-      progress: String(form.get("progress") || "还没开始").trim(),
-      next: String(form.get("next") || "决定何时继续").trim(),
+      progress: "还没开始",
+      next: "",
     };
     setBoard((old) => ({ ...old, tasks: [...old.tasks, task] }));
     setShowBranch(false);
@@ -211,7 +229,7 @@ export default function Home() {
         <h2>{current.title}</h2>
         <label>我做到哪里了<textarea value={current.progress} onChange={(e) => updateCurrent("progress", e.target.value)} /></label>
         <label className="next">我现在只做这一步<textarea value={current.next} onChange={(e) => updateCurrent("next", e.target.value)} /></label>
-        {current.parentId && <button className="return-button" onClick={finishAndReturn}>完成并回到「{root?.title}」</button>}
+        {current.parentId && parentTask && <button type="button" className="return-button" onClick={() => finishAndReturn(current.id, parentTask.id)}>完成并回到「{parentTask.title}」</button>}
       </section>
 
       <section className="path" aria-label="任务路线">
@@ -227,7 +245,7 @@ export default function Home() {
         )}
       </section>
 
-      {showBranch && <dialog open className="dialog"><form method="dialog" onSubmit={addBranch}><div className="section-heading"><h2>从「{current.title}」长出新任务</h2><button type="button" className="close" onClick={() => setShowBranch(false)}>×</button></div><label>这件事叫什么<input name="title" autoFocus placeholder="例如：整理另一个项目的资料" /></label><label>它现在做到哪里<input name="progress" placeholder="例如：只有一个念头" /></label><label>下次从哪一步继续<input name="next" placeholder="例如：列出要整理的文件" /></label><button className="primary-button" type="submit">记下来源关系</button></form></dialog>}
+      {showBranch && <dialog open className="dialog"><form method="dialog" onSubmit={addBranch}><div className="section-heading"><h2>从「{current.title}」长出新任务</h2><button type="button" className="close" onClick={() => setShowBranch(false)}>×</button></div><label>这件事叫什么<input name="title" autoFocus placeholder="例如：整理另一个项目的资料" /></label><button className="primary-button" type="submit">记下来源关系</button></form></dialog>}
       {showProject && <dialog open className="dialog"><form method="dialog" onSubmit={addProject}><div className="section-heading"><h2>新项目</h2><button type="button" className="close" onClick={() => setShowProject(false)}>×</button></div><label>项目名称<input name="name" autoFocus placeholder="例如：旅行计划" /></label><label>最终想完成什么<input name="goal" placeholder="例如：确定路线并订好行程" /></label><label>这个项目的第一步<input name="task" placeholder="例如：列出行程约束" /></label><button className="primary-button" type="submit">建立项目并进入</button></form></dialog>}
     </main>
   );
