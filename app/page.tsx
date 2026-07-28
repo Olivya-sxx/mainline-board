@@ -16,17 +16,7 @@ type Project = { id: string; name: string; goal: string };
 type Board = { projects: Project[]; tasks: (Task & { projectId: string })[]; activeTaskId: string; activeProjectId: string };
 
 const initialBoard: Board = {
-  projects: [{ id: "p1", name: "我的总线", goal: "让每件正在做的事都有清楚的下一步" }],
-  tasks: [
-    {
-      id: "t1",
-      title: "建立主线看板",
-      progress: "先把第一版用起来",
-      next: "把你真实正在做的一件事写进来",
-      status: "current", projectId: "p1",
-    },
-  ],
-  activeTaskId: "t1", activeProjectId: "p1",
+  projects: [], tasks: [], activeTaskId: "", activeProjectId: "",
 };
 
 const storageKey = "mainline-board-v5";
@@ -39,6 +29,7 @@ function restoreBoard(value: unknown): Board {
   const projects = Array.isArray(saved.projects) ? saved.projects.filter((project): project is Project => Boolean(project?.id && project.name)).map((project) => ({ ...project, goal: project.goal || "" })) : [];
   const tasks = Array.isArray(saved.tasks) ? saved.tasks.filter((task): task is ProjectTask => Boolean(task?.id && task.title && task.projectId)).map((task) => ({ ...task, progress: task.progress || "还没开始", next: task.next || "", status: task.status === "done" || task.status === "paused" ? task.status : "current" })) : [];
   if (!projects.length || !tasks.length) return initialBoard;
+  if (projects.length === 1 && projects[0].id === "p1" && tasks.length === 1 && tasks[0].id === "t1" && tasks[0].title === "建立主线看板") return initialBoard;
   const activeTaskId = tasks.some((task) => task.id === saved.activeTaskId) ? saved.activeTaskId! : tasks[0].id;
   const activeProjectId = projects.some((project) => project.id === saved.activeProjectId) ? saved.activeProjectId! : tasks.find((task) => task.id === activeTaskId)!.projectId;
   return { projects, tasks, activeTaskId, activeProjectId };
@@ -165,6 +156,28 @@ export default function Home() {
     });
   }
 
+  function clearBoard() {
+    if (!window.confirm("清空全部项目和任务？此操作无法恢复。")) return;
+    setCollapsedIds([]);
+    setShowBranch(false);
+    setShowProject(false);
+    setBoard(initialBoard);
+  }
+
+  function createFirstTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const title = String(new FormData(event.currentTarget).get("title") || "").trim();
+    if (!title) return;
+    const projectId = id();
+    const firstTask: ProjectTask = { id: id(), projectId, title, progress: "还没开始", next: "", status: "current" };
+    setBoard({
+      projects: [{ id: projectId, name: "我的主线", goal: "" }],
+      tasks: [firstTask],
+      activeProjectId: projectId,
+      activeTaskId: firstTask.id,
+    });
+  }
+
   function updateCurrent(field: "progress" | "next", value: string) {
     setBoard((old) => ({
       ...old,
@@ -235,13 +248,28 @@ export default function Home() {
     setShowProject(false);
   }
 
-  if (!ready || !current) return null;
+  if (!ready) return null;
+
+  if (!current) {
+    return (
+      <main className="setup">
+        <section className="setup-card">
+          <p className="eyebrow">主线看板</p>
+          <h1>先写下你正在做的事</h1>
+          <form onSubmit={createFirstTask}>
+            <label>这件事叫什么？<input name="title" autoFocus placeholder="例如：准备项目书" /></label>
+            <button className="primary-button" type="submit">开始</button>
+          </form>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main>
       <header className="topbar">
         <div><p className="eyebrow">主线看板</p><h1>你现在在这里</h1></div>
-        <div className="project-actions"><button className="text-button" onClick={copyMarkdown}>{copied ? "已复制" : "复制 Markdown"}</button><button className="text-button" onClick={downloadMarkdown}>下载 .md</button><select aria-label="切换项目" value={project.id} onChange={(e) => switchProject(e.target.value)}>{board.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="text-button" onClick={() => setShowProject(true)}>+ 新项目</button></div>
+        <div className="project-actions"><button className="text-button" onClick={copyMarkdown}>{copied ? "已复制" : "复制 Markdown"}</button><button className="text-button" onClick={downloadMarkdown}>下载 .md</button><select aria-label="切换项目" value={project.id} onChange={(e) => switchProject(e.target.value)}>{board.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="text-button" onClick={() => setShowProject(true)}>+ 新项目</button><button className="text-button danger-button" onClick={clearBoard}>清空记录</button></div>
       </header>
 
       <section className="orientation" aria-label="当前位置">
@@ -255,6 +283,7 @@ export default function Home() {
         <label>我做到哪里了<textarea value={current.progress} onChange={(e) => updateCurrent("progress", e.target.value)} /></label>
         <label className="next">我现在只做这一步<textarea value={current.next} onChange={(e) => updateCurrent("next", e.target.value)} /></label>
         {current.parentId && parentTask && <button type="button" className="return-button" onClick={() => finishAndReturn(current.id, parentTask.id)}>完成并回到「{parentTask.title}」</button>}
+        {current.parentId && <button type="button" className="delete-current-button" onClick={() => deleteBranch(current.id)}>删除这条岔路</button>}
       </section>
 
       <section className="path" aria-label="任务路线">
