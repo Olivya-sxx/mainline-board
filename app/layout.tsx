@@ -1,23 +1,14 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const assetPath = process.env.GITHUB_PAGES === "true" ? "/mainline-board" : "";
 
 export const metadata: Metadata = {
   title: "主线看板",
   description: "随时知道自己在哪里、要去哪里。",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: `${assetPath}/favicon.svg`,
+    shortcut: `${assetPath}/favicon.svg`,
   },
 };
 
@@ -28,11 +19,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

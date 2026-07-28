@@ -27,7 +27,10 @@ function restoreBoard(value: unknown): Board {
   if (!value || typeof value !== "object") return initialBoard;
   const saved = value as Partial<Board>;
   const projects = Array.isArray(saved.projects) ? saved.projects.filter((project): project is Project => Boolean(project?.id && project.name)).map((project) => ({ ...project, goal: project.goal || "" })) : [];
-  const tasks = Array.isArray(saved.tasks) ? saved.tasks.filter((task): task is ProjectTask => Boolean(task?.id && task.title && task.projectId)).map((task) => ({ ...task, progress: task.progress || "还没开始", next: task.next || "", status: task.status === "done" || task.status === "paused" ? task.status : "current" })) : [];
+  const tasks = Array.isArray(saved.tasks) ? saved.tasks.filter((task): task is ProjectTask => Boolean(task?.id && task.title && task.projectId)).map((task) => {
+    const status: Task["status"] = task.status === "done" || task.status === "paused" ? task.status : "current";
+    return { ...task, progress: task.progress || "还没开始", next: task.next || "", status };
+  }) : [];
   if (!projects.length || !tasks.length) return initialBoard;
   if (projects.length === 1 && projects[0].id === "p1" && tasks.length === 1 && tasks[0].id === "t1" && tasks[0].title === "建立主线看板") return initialBoard;
   const activeTaskId = tasks.some((task) => task.id === saved.activeTaskId) ? saved.activeTaskId! : tasks[0].id;
@@ -105,7 +108,7 @@ export default function Home() {
     setBoard((old) => ({
       ...old,
       activeTaskId: taskId,
-      tasks: old.tasks.map((task) => ({ ...task, status: task.id === taskId ? "current" : task.status === "current" ? "paused" : task.status })),
+      tasks: old.tasks.map((task): ProjectTask => ({ ...task, status: task.id === taskId ? "current" : task.status === "current" ? "paused" : task.status })),
     }));
   }
 
@@ -124,7 +127,7 @@ export default function Home() {
       const tasks = old.tasks.filter((task): task is ProjectTask => Boolean(task));
       const parent = tasks.find((task) => task.id === parentId);
       if (!parent) return old;
-      const updatedTasks = tasks.map((task) => task.id === taskId ? { ...task, status: "done" } : task.id === parent.id ? { ...task, status: "current" } : task);
+      const updatedTasks = tasks.map((task): ProjectTask => task.id === taskId ? { ...task, status: "done" } : task.id === parent.id ? { ...task, status: "current" } : task);
       return {
         ...old,
         activeTaskId: parent.id,

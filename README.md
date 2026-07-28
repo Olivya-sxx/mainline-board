@@ -1,6 +1,6 @@
 # 主线看板
 
-[打开网站](https://mainline-board-onna.q2354334260.chatgpt.site)
+[打开网站（Sites）](https://mainline-board-onna.q2354334260.chatgpt.site) · [打开网站（GitHub Pages）](https://olivya-sxx.github.io/mainline-board/)
 
 给容易跳到岔路的人用的任务路线图：随时看见自己在哪里、这件事从哪里长出来，以及完成后该回到哪里。
 
@@ -32,5 +32,6 @@
 npm install
 npm run dev
 npm run build
+npm run build:pages
 npm test
 ```
