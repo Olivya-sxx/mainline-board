@@ -76,14 +76,17 @@ export default function Home() {
 
   useEffect(() => {
     const saved = localStorage.getItem(storageKey);
+    let restored = initialBoard;
     if (saved) {
       try {
-        setBoard(restoreBoard(JSON.parse(saved)));
-      } catch {
-        setBoard(initialBoard);
-      }
+        restored = restoreBoard(JSON.parse(saved));
+      } catch {}
     }
-    setReady(true);
+    const frame = window.requestAnimationFrame(() => {
+      setBoard(restored);
+      setReady(true);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
