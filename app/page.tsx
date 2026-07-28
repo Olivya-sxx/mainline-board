@@ -5,7 +5,8 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 type Task = {
   id: string;
   title: string;
-  progress: string;
+  progress?: string;
+  percent?: number;
   next: string;
   status: "current" | "paused" | "done";
   parentId?: string;
@@ -21,7 +22,7 @@ const initialBoard: Board = {
     {
       id: "t1",
       title: "建立主线看板",
-      progress: "先把第一版用起来",
+      percent: 0,
       next: "把你真实正在做的一件事写进来",
       status: "current", projectId: "p1",
     },
@@ -35,6 +36,10 @@ type ProjectTask = Task & { projectId: string };
 
 function id() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function percentOf(task: Task) {
+  return typeof task.percent === "number" ? Math.max(0, Math.min(100, task.percent)) : 0;
 }
 
 function RouteTree({ task, tasks, currentId, collapsedIds, onSelect, onToggle }: { task: ProjectTask; tasks: ProjectTask[]; currentId: string; collapsedIds: string[]; onSelect: (id: string) => void; onToggle: (id: string) => void }) {
@@ -118,11 +123,11 @@ export default function Home() {
     setBoard((old) => ({
       ...old,
       activeTaskId: parentId,
-      tasks: old.tasks.map((task) => task.id === current.id ? { ...task, status: "done" } : task.id === parentId ? { ...task, status: "current" } : task.status),
+      tasks: old.tasks.map((task) => task.id === current.id ? { ...task, status: "done", percent: 100 } : task.id === parentId ? { ...task, status: "current" } : task.status),
     }));
   }
 
-  function updateCurrent(field: "progress" | "next", value: string) {
+  function updateCurrent(field: "next" | "percent", value: string | number) {
     setBoard((old) => ({
       ...old,
       tasks: old.tasks.map((task) => task.id === old.activeTaskId ? { ...task, [field]: value } : task),
@@ -134,7 +139,7 @@ export default function Home() {
       const mark = task.status === "done" ? "x" : " ";
       const currentMark = task.id === current.id ? " ← 你在这里" : "";
       const children = projectTasks.filter((item) => item.parentId === task.id);
-      return [`${"  ".repeat(depth)}- [${mark}] ${task.title}${currentMark}`, ...children.flatMap((child) => taskLine(child, depth + 1))];
+      return [`${"  ".repeat(depth)}- [${mark}] ${task.title}（${percentOf(task)}%）${currentMark}`, ...children.flatMap((child) => taskLine(child, depth + 1))];
     }
     return [`# ${project.name}`, `> 目标：${project.goal || "未填写"}`, "", ...routeRoots.flatMap((task) => taskLine(task, 0)), ""].join("\n");
   }
@@ -173,7 +178,7 @@ export default function Home() {
     const task: Task & { projectId: string } = {
       id: id(), title, parentId: current.id, status: "paused",
       projectId: board.activeProjectId,
-      progress: String(form.get("progress") || "还没开始").trim(),
+      percent: 0,
       next: String(form.get("next") || "决定何时继续").trim(),
     };
     setBoard((old) => ({ ...old, tasks: [...old.tasks, task] }));
@@ -187,7 +192,7 @@ export default function Home() {
     if (!name) return;
     const projectId = id();
     const newProject = { id: projectId, name, goal: String(form.get("goal") || "").trim() };
-    const firstTask = { id: id(), projectId, title: String(form.get("task") || "").trim() || "确定第一步", progress: "刚刚开始", next: "写下现在要做的第一步", status: "current" as const };
+    const firstTask = { id: id(), projectId, title: String(form.get("task") || "").trim() || "确定第一步", percent: 0, next: "写下现在要做的第一步", status: "current" as const };
     setBoard((old) => ({ ...old, projects: [...old.projects, newProject], tasks: [...old.tasks.map((task) => task.status === "current" ? { ...task, status: "paused" as const } : task), firstTask], activeProjectId: projectId, activeTaskId: firstTask.id }));
     setShowProject(false);
   }
@@ -209,7 +214,7 @@ export default function Home() {
       <section className="current-card">
         <p className="eyebrow">{current.parentId ? "这件事来自上一条线" : "当前任务 · 只保留一个"}</p>
         <h2>{current.title}</h2>
-        <label>我做到哪里了<textarea value={current.progress} onChange={(e) => updateCurrent("progress", e.target.value)} /></label>
+        <label className="progress-control"><span>进度 <output>{percentOf(current)}%</output></span><input type="range" min="0" max="100" step="5" value={percentOf(current)} onChange={(e) => updateCurrent("percent", Number(e.target.value))} aria-label="任务进度" /><small>刚开始 <span>进行中</span> 快完成</small></label>
         <label className="next">我现在只做这一步<textarea value={current.next} onChange={(e) => updateCurrent("next", e.target.value)} /></label>
         {current.parentId && <button className="return-button" onClick={finishAndReturn}>完成并回到「{root?.title}」</button>}
       </section>
@@ -227,7 +232,7 @@ export default function Home() {
         )}
       </section>
 
-      {showBranch && <dialog open className="dialog"><form method="dialog" onSubmit={addBranch}><div className="section-heading"><h2>从「{current.title}」长出新任务</h2><button type="button" className="close" onClick={() => setShowBranch(false)}>×</button></div><label>这件事叫什么<input name="title" autoFocus placeholder="例如：整理另一个项目的资料" /></label><label>它现在做到哪里<input name="progress" placeholder="例如：只有一个念头" /></label><label>下次从哪一步继续<input name="next" placeholder="例如：列出要整理的文件" /></label><button className="primary-button" type="submit">记下来源关系</button></form></dialog>}
+      {showBranch && <dialog open className="dialog"><form method="dialog" onSubmit={addBranch}><div className="section-heading"><h2>从「{current.title}」长出新任务</h2><button type="button" className="close" onClick={() => setShowBranch(false)}>×</button></div><label>这件事叫什么<input name="title" autoFocus placeholder="例如：整理另一个项目的资料" /></label><label>下一步做什么<input name="next" placeholder="例如：列出要整理的文件" /></label><button className="primary-button" type="submit">记下来源关系</button></form></dialog>}
       {showProject && <dialog open className="dialog"><form method="dialog" onSubmit={addProject}><div className="section-heading"><h2>新项目</h2><button type="button" className="close" onClick={() => setShowProject(false)}>×</button></div><label>项目名称<input name="name" autoFocus placeholder="例如：旅行计划" /></label><label>最终想完成什么<input name="goal" placeholder="例如：确定路线并订好行程" /></label><label>这个项目的第一步<input name="task" placeholder="例如：列出行程约束" /></label><button className="primary-button" type="submit">建立项目并进入</button></form></dialog>}
     </main>
   );
