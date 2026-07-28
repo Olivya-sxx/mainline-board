@@ -140,6 +140,28 @@ export default function Home() {
     });
   }
 
+  function deleteBranch(taskId: string) {
+    const task = board.tasks.find((item) => item.id === taskId);
+    if (!task || !window.confirm(`删除「${task.title}」和它的所有下级任务？`)) return;
+    setBoard((old) => {
+      const deletedIds = new Set([taskId]);
+      let foundChild = true;
+      while (foundChild) {
+        foundChild = false;
+        old.tasks.forEach((item) => {
+          if (item.parentId && deletedIds.has(item.parentId) && !deletedIds.has(item.id)) {
+            deletedIds.add(item.id);
+            foundChild = true;
+          }
+        });
+      }
+      const tasks = old.tasks.filter((item) => !deletedIds.has(item.id));
+      const parent = tasks.find((item) => item.id === task.parentId);
+      const activeTaskId = deletedIds.has(old.activeTaskId) ? parent?.id ?? tasks[0]?.id : old.activeTaskId;
+      return { ...old, tasks, activeTaskId, activeProjectId: parent?.projectId ?? old.activeProjectId };
+    });
+  }
+
   function updateCurrent(field: "progress" | "next", value: string) {
     setBoard((old) => ({
       ...old,
@@ -241,7 +263,7 @@ export default function Home() {
       <section className="branches">
         <div className="section-heading"><div><p className="eyebrow">从这里长出的任务</p><h2>它们都记得自己来自哪里</h2></div><button className="outline-button" onClick={() => setShowBranch(true)}>+ 新任务</button></div>
         {branches.length === 0 ? <p className="empty">暂时没有从这里长出的任务。</p> : (
-          <div className="branch-list">{branches.map((branch) => <article className="branch" key={branch.id}><div><p>{branch.title}</p><small>{branch.next}</small></div><button onClick={() => setCurrent(branch.id)}>去处理</button></article>)}</div>
+          <div className="branch-list">{branches.map((branch) => <article className="branch" key={branch.id}><div><p>{branch.title}</p><small>{branch.next}</small></div><div className="branch-actions"><button onClick={() => setCurrent(branch.id)}>去处理</button><button className="danger-button" onClick={() => deleteBranch(branch.id)}>删除</button></div></article>)}</div>
         )}
       </section>
 
