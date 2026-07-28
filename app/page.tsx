@@ -65,8 +65,23 @@ const conversationTrial: Board = {
 
 const storageKey = "mainline-board-v1";
 
+type ProjectTask = Task & { projectId: string };
+
 function id() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function RouteTree({ task, tasks, currentId, onSelect }: { task: ProjectTask; tasks: ProjectTask[]; currentId: string; onSelect: (id: string) => void }) {
+  const children = tasks.filter((item) => item.parentId === task.id && item.status !== "done");
+  const isCurrent = task.id === currentId;
+  return (
+    <li>
+      <button className={`route-node ${isCurrent ? "is-current" : ""}`} onClick={() => onSelect(task.id)}>
+        <span>{task.title}</span>{isCurrent && <em>你在这里</em>}
+      </button>
+      {children.length > 0 && <ul>{children.map((child) => <RouteTree key={child.id} task={child} tasks={tasks} currentId={currentId} onSelect={onSelect} />)}</ul>}
+    </li>
+  );
 }
 
 export default function Home() {
@@ -91,6 +106,12 @@ export default function Home() {
     () => board.tasks.filter((task) => task.parentId === current?.id && task.status !== "done"),
     [board.tasks, current?.id],
   );
+  const projectTasks = board.tasks.filter((task) => task.projectId === board.activeProjectId);
+  const root = useMemo(() => {
+    let node = current;
+    while (node?.parentId) node = board.tasks.find((task) => task.id === node.parentId) ?? node;
+    return node;
+  }, [board.tasks, current]);
 
   function setCurrent(taskId: string) {
     setBoard((old) => ({
@@ -110,6 +131,16 @@ export default function Home() {
     if (window.confirm("这会用本次对话的整理结果替换当前看板。继续吗？")) {
       setBoard(conversationTrial);
     }
+  }
+
+  function finishAndReturn() {
+    if (!current?.parentId) return;
+    const parentId = current.parentId;
+    setBoard((old) => ({
+      ...old,
+      activeTaskId: parentId,
+      tasks: old.tasks.map((task) => task.id === current.id ? { ...task, status: "done" } : task.id === parentId ? { ...task, status: "current" } : task.status),
+    }));
   }
 
   function updateCurrent(field: "progress" | "next", value: string) {
@@ -161,16 +192,17 @@ export default function Home() {
       </section>
 
       <section className="current-card">
-        <p className="eyebrow">当前任务 · 只保留一个</p>
+        <p className="eyebrow">{current.parentId ? "你正在处理一条岔路" : "当前任务 · 只保留一个"}</p>
         <h2>{current.title}</h2>
         <label>我做到哪里了<textarea value={current.progress} onChange={(e) => updateCurrent("progress", e.target.value)} /></label>
         <label className="next">我现在只做这一步<textarea value={current.next} onChange={(e) => updateCurrent("next", e.target.value)} /></label>
+        {current.parentId && <button className="return-button" onClick={finishAndReturn}>完成并回到「{root?.title}」</button>}
       </section>
 
       <section className="path" aria-label="任务路线">
         <p className="eyebrow">你的路线</p>
-        <div className="line"><span className="dot done" /><span /><span className="dot here" /><span /><span className="dot" /></div>
-        <div className="path-labels"><span>开始</span><span>现在</span><span>完成</span></div>
+        <p className="route-note">主线一直留在图上；你点进岔路时，位置标记会移动。</p>
+        {root && <ul className="route-tree"><RouteTree task={root} tasks={projectTasks} currentId={current.id} onSelect={setCurrent} /></ul>}
       </section>
 
       <section className="branches">
