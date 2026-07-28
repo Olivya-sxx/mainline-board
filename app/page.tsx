@@ -31,6 +31,25 @@ const storageKey = "mainline-board-v2";
 
 type ProjectTask = Task & { projectId: string };
 
+function restoreBoard(value: unknown): Board {
+  if (!value || typeof value !== "object") return initialBoard;
+  const saved = value as Partial<Board>;
+  const projects = Array.isArray(saved.projects) ? saved.projects.filter((item): item is Project => Boolean(item?.id && item.name)).map((item) => ({ ...item, goal: item.goal || "" })) : [];
+  const fallbackProjectId = projects[0]?.id;
+  const tasks = Array.isArray(saved.tasks) ? saved.tasks.filter((item): item is ProjectTask => Boolean(item?.id && item.title && (item.projectId || fallbackProjectId))).map((item) => ({
+    id: item.id,
+    title: item.title,
+    next: item.next || "",
+    status: item.status === "done" || item.status === "paused" ? item.status : "current",
+    parentId: item.parentId,
+    projectId: item.projectId || fallbackProjectId!,
+  })) : [];
+  if (!projects.length || !tasks.length) return initialBoard;
+  const activeTaskId = tasks.some((task) => task.id === saved.activeTaskId) ? saved.activeTaskId! : tasks[0].id;
+  const activeProjectId = projects.some((project) => project.id === saved.activeProjectId) ? saved.activeProjectId! : tasks.find((task) => task.id === activeTaskId)!.projectId;
+  return { projects, tasks, activeTaskId, activeProjectId };
+}
+
 function id() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -63,7 +82,13 @@ export default function Home() {
 
   useEffect(() => {
     const saved = localStorage.getItem(storageKey);
-    if (saved) setBoard(JSON.parse(saved));
+    if (saved) {
+      try {
+        setBoard(restoreBoard(JSON.parse(saved)));
+      } catch {
+        setBoard(initialBoard);
+      }
+    }
     setReady(true);
   }, []);
 
@@ -107,11 +132,16 @@ export default function Home() {
   }
 
   function finishAndReturn(taskId: string, parentId: string) {
-    setBoard((old) => ({
-      ...old,
-      activeTaskId: parentId,
-      tasks: old.tasks.map((task) => task.id === taskId ? { ...task, status: "done" } : task.id === parentId ? { ...task, status: "current" } : task.status),
-    }));
+    setBoard((old) => {
+      const parent = old.tasks.find((task) => task.id === parentId);
+      if (!parent) return old;
+      return {
+        ...old,
+        activeTaskId: parent.id,
+        activeProjectId: parent.projectId,
+        tasks: old.tasks.map((task) => task.id === taskId ? { ...task, status: "done" } : task.id === parent.id ? { ...task, status: "current" } : task.status),
+      };
+    });
   }
 
   function updateCurrent(value: string) {
