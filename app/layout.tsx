@@ -15,11 +15,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "主线看板",
   description: "随时知道自己在哪里、要去哪里。",
-  openGraph: {
-    title: "主线看板",
-    description: "随时知道自己在哪里、要去哪里。",
-    images: ["/og.png"],
-  },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

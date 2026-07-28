@@ -29,41 +29,7 @@ const initialBoard: Board = {
   activeTaskId: "t1", activeProjectId: "p1",
 };
 
-const conversationTrial: Board = {
-  projects: [{ id: "trial-project", name: "主线看板", goal: "做出一个让我跳跃时也能看清位置与去向的工具" }],
-  tasks: [
-    {
-      id: "trial-task",
-      projectId: "trial-project",
-      title: "验证主线看板的使用方式",
-      progress: "初版已完成；发现填完进度和下一步后，缺少项目梳理与回到主线的流程。",
-      next: "用 3 个问题梳理项目，再决定下一版该补什么。",
-      status: "current",
-    },
-    {
-      id: "trial-branch-1",
-      projectId: "trial-project",
-      parentId: "trial-task",
-      title: "补上“完成并回到原处”",
-      progress: "已确认需要这个选择。",
-      next: "设计完成后回到原任务的动作。",
-      status: "paused",
-    },
-    {
-      id: "trial-branch-2",
-      projectId: "trial-project",
-      parentId: "trial-task",
-      title: "决定 Codex 对话如何更新看板",
-      progress: "先试一次由 Codex 整理当前对话。",
-      next: "确认这份试填是否有用。",
-      status: "paused",
-    },
-  ],
-  activeTaskId: "trial-task",
-  activeProjectId: "trial-project",
-};
-
-const storageKey = "mainline-board-v1";
+const storageKey = "mainline-board-v2";
 
 type ProjectTask = Task & { projectId: string };
 
@@ -127,12 +93,6 @@ export default function Home() {
     setBoard((old) => ({ ...old, activeProjectId: projectId, activeTaskId: task.id }));
   }
 
-  function loadConversationTrial() {
-    if (window.confirm("这会用本次对话的整理结果替换当前看板。继续吗？")) {
-      setBoard(conversationTrial);
-    }
-  }
-
   function finishAndReturn() {
     if (!current?.parentId) return;
     const parentId = current.parentId;
@@ -183,7 +143,7 @@ export default function Home() {
     <main>
       <header className="topbar">
         <div><p className="eyebrow">主线看板</p><h1>你现在在这里</h1></div>
-        <div className="project-actions"><button className="trial-button" onClick={loadConversationTrial}>试填本次对话</button><select aria-label="切换项目" value={project.id} onChange={(e) => switchProject(e.target.value)}>{board.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="text-button" onClick={() => setShowProject(true)}>+ 新项目</button></div>
+        <div className="project-actions"><select aria-label="切换项目" value={project.id} onChange={(e) => switchProject(e.target.value)}>{board.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="text-button" onClick={() => setShowProject(true)}>+ 新项目</button></div>
       </header>
 
       <section className="orientation" aria-label="当前位置">
