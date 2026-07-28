@@ -29,7 +29,7 @@ const initialBoard: Board = {
   activeTaskId: "t1", activeProjectId: "p1",
 };
 
-const storageKey = "mainline-board-v2";
+const storageKey = "mainline-board-v3";
 
 type ProjectTask = Task & { projectId: string };
 
