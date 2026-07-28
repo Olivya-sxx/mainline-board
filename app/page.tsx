@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 type Task = {
   id: string;
   title: string;
+  progress: string;
   next: string;
   status: "current" | "paused" | "done";
   parentId?: string;
@@ -20,6 +21,7 @@ const initialBoard: Board = {
     {
       id: "t1",
       title: "建立主线看板",
+      progress: "先把第一版用起来",
       next: "把你真实正在做的一件事写进来",
       status: "current", projectId: "p1",
     },
@@ -30,25 +32,6 @@ const initialBoard: Board = {
 const storageKey = "mainline-board-v2";
 
 type ProjectTask = Task & { projectId: string };
-
-function restoreBoard(value: unknown): Board {
-  if (!value || typeof value !== "object") return initialBoard;
-  const saved = value as Partial<Board>;
-  const projects = Array.isArray(saved.projects) ? saved.projects.filter((item): item is Project => Boolean(item?.id && item.name)).map((item) => ({ ...item, goal: item.goal || "" })) : [];
-  const fallbackProjectId = projects[0]?.id;
-  const tasks = Array.isArray(saved.tasks) ? saved.tasks.filter((item): item is ProjectTask => Boolean(item?.id && item.title && (item.projectId || fallbackProjectId))).map((item) => ({
-    id: item.id,
-    title: item.title,
-    next: item.next || "",
-    status: item.status === "done" || item.status === "paused" ? item.status : "current",
-    parentId: item.parentId,
-    projectId: item.projectId || fallbackProjectId!,
-  })) : [];
-  if (!projects.length || !tasks.length) return initialBoard;
-  const activeTaskId = tasks.some((task) => task.id === saved.activeTaskId) ? saved.activeTaskId! : tasks[0].id;
-  const activeProjectId = projects.some((project) => project.id === saved.activeProjectId) ? saved.activeProjectId! : tasks.find((task) => task.id === activeTaskId)!.projectId;
-  return { projects, tasks, activeTaskId, activeProjectId };
-}
 
 function id() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -82,13 +65,7 @@ export default function Home() {
 
   useEffect(() => {
     const saved = localStorage.getItem(storageKey);
-    if (saved) {
-      try {
-        setBoard(restoreBoard(JSON.parse(saved)));
-      } catch {
-        setBoard(initialBoard);
-      }
-    }
+    if (saved) setBoard(JSON.parse(saved));
     setReady(true);
   }, []);
 
@@ -104,7 +81,11 @@ export default function Home() {
   );
   const projectTasks = board.tasks.filter((task) => task.projectId === board.activeProjectId);
   const routeRoots = projectTasks.filter((task) => !task.parentId || !projectTasks.some((candidate) => candidate.id === task.parentId));
-  const parentTask = current?.parentId ? board.tasks.find((task) => task.id === current.parentId) : undefined;
+  const root = useMemo(() => {
+    let node = current;
+    while (node?.parentId) node = board.tasks.find((task) => task.id === node.parentId) ?? node;
+    return node;
+  }, [board.tasks, current]);
 
   function setCurrent(taskId: string) {
     const ancestors: string[] = [];
@@ -131,23 +112,20 @@ export default function Home() {
     setBoard((old) => ({ ...old, activeProjectId: projectId, activeTaskId: task.id }));
   }
 
-  function finishAndReturn(taskId: string, parentId: string) {
-    setBoard((old) => {
-      const parent = old.tasks.find((task) => task.id === parentId);
-      if (!parent) return old;
-      return {
-        ...old,
-        activeTaskId: parent.id,
-        activeProjectId: parent.projectId,
-        tasks: old.tasks.map((task) => task.id === taskId ? { ...task, status: "done" } : task.id === parent.id ? { ...task, status: "current" } : task.status),
-      };
-    });
-  }
-
-  function updateCurrent(value: string) {
+  function finishAndReturn() {
+    if (!current?.parentId) return;
+    const parentId = current.parentId;
     setBoard((old) => ({
       ...old,
-      tasks: old.tasks.map((task) => task.id === old.activeTaskId ? { ...task, next: value } : task),
+      activeTaskId: parentId,
+      tasks: old.tasks.map((task) => task.id === current.id ? { ...task, status: "done" } : task.id === parentId ? { ...task, status: "current" } : task.status),
+    }));
+  }
+
+  function updateCurrent(field: "progress" | "next", value: string) {
+    setBoard((old) => ({
+      ...old,
+      tasks: old.tasks.map((task) => task.id === old.activeTaskId ? { ...task, [field]: value } : task),
     }));
   }
 
@@ -195,7 +173,8 @@ export default function Home() {
     const task: Task & { projectId: string } = {
       id: id(), title, parentId: current.id, status: "paused",
       projectId: board.activeProjectId,
-      next: "",
+      progress: String(form.get("progress") || "还没开始").trim(),
+      next: String(form.get("next") || "决定何时继续").trim(),
     };
     setBoard((old) => ({ ...old, tasks: [...old.tasks, task] }));
     setShowBranch(false);
@@ -208,7 +187,7 @@ export default function Home() {
     if (!name) return;
     const projectId = id();
     const newProject = { id: projectId, name, goal: String(form.get("goal") || "").trim() };
-    const firstTask = { id: id(), projectId, title: String(form.get("task") || "").trim() || "确定第一步", next: "写下现在要做的第一步", status: "current" as const };
+    const firstTask = { id: id(), projectId, title: String(form.get("task") || "").trim() || "确定第一步", progress: "刚刚开始", next: "写下现在要做的第一步", status: "current" as const };
     setBoard((old) => ({ ...old, projects: [...old.projects, newProject], tasks: [...old.tasks.map((task) => task.status === "current" ? { ...task, status: "paused" as const } : task), firstTask], activeProjectId: projectId, activeTaskId: firstTask.id }));
     setShowProject(false);
   }
@@ -230,8 +209,9 @@ export default function Home() {
       <section className="current-card">
         <p className="eyebrow">{current.parentId ? "这件事来自上一条线" : "当前任务 · 只保留一个"}</p>
         <h2>{current.title}</h2>
-        <label className="next">我现在只做这一步<textarea value={current.next} onChange={(e) => updateCurrent(e.target.value)} /></label>
-        {current.parentId && parentTask && <button type="button" className="return-button" onClick={() => finishAndReturn(current.id, parentTask.id)}>完成并回到「{parentTask.title}」</button>}
+        <label>我做到哪里了<textarea value={current.progress} onChange={(e) => updateCurrent("progress", e.target.value)} /></label>
+        <label className="next">我现在只做这一步<textarea value={current.next} onChange={(e) => updateCurrent("next", e.target.value)} /></label>
+        {current.parentId && <button className="return-button" onClick={finishAndReturn}>完成并回到「{root?.title}」</button>}
       </section>
 
       <section className="path" aria-label="任务路线">
@@ -247,7 +227,7 @@ export default function Home() {
         )}
       </section>
 
-      {showBranch && <dialog open className="dialog"><form method="dialog" onSubmit={addBranch}><div className="section-heading"><h2>从「{current.title}」长出新任务</h2><button type="button" className="close" onClick={() => setShowBranch(false)}>×</button></div><label>这件事叫什么<input name="title" autoFocus placeholder="例如：整理另一个项目的资料" /></label><button className="primary-button" type="submit">记下来源关系</button></form></dialog>}
+      {showBranch && <dialog open className="dialog"><form method="dialog" onSubmit={addBranch}><div className="section-heading"><h2>从「{current.title}」长出新任务</h2><button type="button" className="close" onClick={() => setShowBranch(false)}>×</button></div><label>这件事叫什么<input name="title" autoFocus placeholder="例如：整理另一个项目的资料" /></label><label>它现在做到哪里<input name="progress" placeholder="例如：只有一个念头" /></label><label>下次从哪一步继续<input name="next" placeholder="例如：列出要整理的文件" /></label><button className="primary-button" type="submit">记下来源关系</button></form></dialog>}
       {showProject && <dialog open className="dialog"><form method="dialog" onSubmit={addProject}><div className="section-heading"><h2>新项目</h2><button type="button" className="close" onClick={() => setShowProject(false)}>×</button></div><label>项目名称<input name="name" autoFocus placeholder="例如：旅行计划" /></label><label>最终想完成什么<input name="goal" placeholder="例如：确定路线并订好行程" /></label><label>这个项目的第一步<input name="task" placeholder="例如：列出行程约束" /></label><button className="primary-button" type="submit">建立项目并进入</button></form></dialog>}
     </main>
   );
