@@ -7,7 +7,7 @@ button, input, textarea { font:inherit; }
 button { cursor:pointer; }
 main { width:min(900px, calc(100% - 32px)); margin:0 auto; padding:54px 0 80px; }
 .topbar, .section-heading, .orientation, .branch { display:flex; justify-content:space-between; gap:20px; align-items:center; }
-.project-actions { display:flex; align-items:center; gap:12px; }.project-actions select { max-width:140px; border:1px solid var(--line); border-radius:999px; padding:8px 10px; background:#fff; color:var(--ink); }
+.project-actions { display:flex; align-items:center; gap:12px; }.project-actions select { max-width:140px; border:1px solid var(--line); border-radius:999px; padding:8px 10px; background:#fff; color:var(--ink); }.trial-button { border:0; border-radius:999px; padding:9px 12px; color:#fff; background:var(--green); font-weight:700; white-space:nowrap; }
 h1, h2, p { margin:0; } h1 { font-size:34px; letter-spacing:-.04em; } h2 { font-size:22px; letter-spacing:-.03em; }
 .eyebrow { color:var(--green); font-size:13px; font-weight:700; letter-spacing:.08em; }
 .text-button, .outline-button, .branch button, .close { border:0; background:transparent; color:var(--green); font-weight:700; }
