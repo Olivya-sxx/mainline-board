@@ -179,7 +179,7 @@ export default function Home() {
       id: id(), title, parentId: current.id, status: "paused",
       projectId: board.activeProjectId,
       percent: 0,
-      next: String(form.get("next") || "决定何时继续").trim(),
+      next: "",
     };
     setBoard((old) => ({ ...old, tasks: [...old.tasks, task] }));
     setShowBranch(false);
@@ -232,7 +232,7 @@ export default function Home() {
         )}
       </section>
 
-      {showBranch && <dialog open className="dialog"><form method="dialog" onSubmit={addBranch}><div className="section-heading"><h2>从「{current.title}」长出新任务</h2><button type="button" className="close" onClick={() => setShowBranch(false)}>×</button></div><label>这件事叫什么<input name="title" autoFocus placeholder="例如：整理另一个项目的资料" /></label><label>下一步做什么<input name="next" placeholder="例如：列出要整理的文件" /></label><button className="primary-button" type="submit">记下来源关系</button></form></dialog>}
+      {showBranch && <dialog open className="dialog"><form method="dialog" onSubmit={addBranch}><div className="section-heading"><h2>从「{current.title}」长出新任务</h2><button type="button" className="close" onClick={() => setShowBranch(false)}>×</button></div><label>这件事叫什么<input name="title" autoFocus placeholder="例如：整理另一个项目的资料" /></label><button className="primary-button" type="submit">记下来源关系</button></form></dialog>}
       {showProject && <dialog open className="dialog"><form method="dialog" onSubmit={addProject}><div className="section-heading"><h2>新项目</h2><button type="button" className="close" onClick={() => setShowProject(false)}>×</button></div><label>项目名称<input name="name" autoFocus placeholder="例如：旅行计划" /></label><label>最终想完成什么<input name="goal" placeholder="例如：确定路线并订好行程" /></label><label>这个项目的第一步<input name="task" placeholder="例如：列出行程约束" /></label><button className="primary-button" type="submit">建立项目并进入</button></form></dialog>}
     </main>
   );
