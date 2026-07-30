@@ -36,6 +36,7 @@ test("keeps the finished board free of starter preview code", async () => {
   assert.match(page, /finishAndReturn/);
   assert.match(page, /deleteBranch/);
   assert.match(page, /删除这条岔路/);
+  assert.match(page, /删除这个主任务/);
   assert.match(page, /clearBoard/);
   assert.match(page, /这件事叫什么？/);
   assert.match(page, /moveTask/);

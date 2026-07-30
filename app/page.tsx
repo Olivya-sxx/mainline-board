@@ -187,7 +187,8 @@ export default function Home() {
 
   function deleteBranch(taskId: string) {
     const task = board.tasks.find((item) => item.id === taskId);
-    if (!task || !window.confirm(`删除「${task.title}」和它的所有下级任务？`)) return;
+    const kind = task?.parentId ? "岔路" : "主任务";
+    if (!task || !window.confirm(`删除${kind}「${task.title}」和它的所有下级任务？`)) return;
     setBoard((old) => {
       const deletedIds = new Set([taskId]);
       let foundChild = true;
@@ -202,8 +203,9 @@ export default function Home() {
       }
       const tasks = old.tasks.filter((item) => !deletedIds.has(item.id));
       const parent = tasks.find((item) => item.id === task.parentId);
-      const activeTaskId = deletedIds.has(old.activeTaskId) ? parent?.id ?? tasks[0]?.id : old.activeTaskId;
-      return { ...old, tasks, activeTaskId, activeProjectId: parent?.projectId ?? old.activeProjectId };
+      const nextTask = deletedIds.has(old.activeTaskId) ? parent ?? tasks.find((item) => item.projectId === task.projectId) ?? tasks[0] : tasks.find((item) => item.id === old.activeTaskId);
+      const projects = old.projects.filter((project) => tasks.some((item) => item.projectId === project.id));
+      return { ...old, projects, tasks, activeTaskId: nextTask?.id ?? "", activeProjectId: nextTask?.projectId ?? "" };
     });
   }
 
@@ -351,7 +353,7 @@ export default function Home() {
         <label>我做到哪里了<textarea value={current.progress} onChange={(e) => updateCurrent("progress", e.target.value)} /></label>
         <label className="next">我现在只做这一步<textarea value={current.next} onChange={(e) => updateCurrent("next", e.target.value)} /></label>
         {current.parentId && parentTask && <button type="button" className="return-button" onClick={() => finishAndReturn(current.id, parentTask.id)}>完成并回到「{parentTask.title}」</button>}
-        {current.parentId && <button type="button" className="delete-current-button" onClick={() => deleteBranch(current.id)}>删除这条岔路</button>}
+        <button type="button" className="delete-current-button" onClick={() => deleteBranch(current.id)}>{current.parentId ? "删除这条岔路" : "删除这个主任务"}</button>
       </section>
 
       <section className="path" aria-label="任务路线">
