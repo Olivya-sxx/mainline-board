@@ -38,6 +38,9 @@ test("keeps the finished board free of starter preview code", async () => {
   assert.match(page, /删除这条岔路/);
   assert.match(page, /clearBoard/);
   assert.match(page, /这件事叫什么？/);
+  assert.match(page, /moveTask/);
+  assert.match(page, /拖到这里，成为独立任务/);
+  assert.match(page, /倒入想法/);
   assert.match(page, /复制 Markdown/);
   assert.match(layout, /title: "主线看板"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);

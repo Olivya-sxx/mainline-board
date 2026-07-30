@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
 type Task = {
   id: string;
@@ -19,7 +19,8 @@ const initialBoard: Board = {
   projects: [], tasks: [], activeTaskId: "", activeProjectId: "",
 };
 
-const storageKey = "mainline-board-v5";
+const storageKey = "mainline-board-v6";
+const previousStorageKey = "mainline-board-v5";
 
 type ProjectTask = Task & { projectId: string };
 
@@ -42,7 +43,7 @@ function id() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function RouteTree({ task, tasks, currentId, collapsedIds, onSelect, onToggle }: { task: ProjectTask; tasks: ProjectTask[]; currentId: string; collapsedIds: string[]; onSelect: (id: string) => void; onToggle: (id: string) => void }) {
+function RouteTree({ task, tasks, currentId, collapsedIds, dragOverId, onSelect, onToggle, onDragStart, onDragEnter, onDragEnd, onDrop }: { task: ProjectTask; tasks: ProjectTask[]; currentId: string; collapsedIds: string[]; dragOverId: string; onSelect: (id: string) => void; onToggle: (id: string) => void; onDragStart: (event: DragEvent<HTMLElement>, taskId: string) => void; onDragEnter: (taskId: string) => void; onDragEnd: () => void; onDrop: (event: DragEvent<HTMLElement>, taskId: string) => void }) {
   const children = tasks.filter((item) => item.parentId === task.id);
   const isCurrent = task.id === currentId;
   const isDone = task.status === "done";
@@ -51,11 +52,11 @@ function RouteTree({ task, tasks, currentId, collapsedIds, onSelect, onToggle }:
     <li className={isDone ? "is-done" : ""}>
       <div className="route-row">
         {children.length > 0 && <button className="collapse-button" aria-label={isCollapsed ? "展开下级任务" : "折叠下级任务"} onClick={() => onToggle(task.id)}>{isCollapsed ? "+" : "−"}</button>}
-        <button className={`route-node ${isCurrent ? "is-current" : ""}`} onClick={() => onSelect(task.id)}>
+        <button className={`route-node ${isCurrent ? "is-current" : ""} ${dragOverId === task.id ? "is-drag-target" : ""}`} draggable onDragStart={(event) => onDragStart(event, task.id)} onDragOver={(event) => event.preventDefault()} onDragEnter={() => onDragEnter(task.id)} onDragEnd={onDragEnd} onDrop={(event) => onDrop(event, task.id)} onClick={() => onSelect(task.id)}>
           {isDone && <b aria-label="已完成">✓</b>}<span>{task.title}</span>{isCurrent && <em>你在这里</em>}
         </button>
       </div>
-      {children.length > 0 && !isCollapsed && <ul>{children.map((child) => <RouteTree key={child.id} task={child} tasks={tasks} currentId={currentId} collapsedIds={collapsedIds} onSelect={onSelect} onToggle={onToggle} />)}</ul>}
+      {children.length > 0 && !isCollapsed && <ul>{children.map((child) => <RouteTree key={child.id} task={child} tasks={tasks} currentId={currentId} collapsedIds={collapsedIds} dragOverId={dragOverId} onSelect={onSelect} onToggle={onToggle} onDragStart={onDragStart} onDragEnter={onDragEnter} onDragEnd={onDragEnd} onDrop={onDrop} />)}</ul>}
     </li>
   );
 }
@@ -64,12 +65,15 @@ export default function Home() {
   const [board, setBoard] = useState<Board>(initialBoard);
   const [ready, setReady] = useState(false);
   const [showBranch, setShowBranch] = useState(false);
+  const [showDump, setShowDump] = useState(false);
   const [showProject, setShowProject] = useState(false);
   const [collapsedIds, setCollapsedIds] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
+  const [draggedTaskId, setDraggedTaskId] = useState("");
+  const [dragOverId, setDragOverId] = useState("");
 
   useEffect(() => {
-    const saved = localStorage.getItem(storageKey);
+    const saved = localStorage.getItem(storageKey) || localStorage.getItem(previousStorageKey);
     let restored = initialBoard;
     if (saved) {
       try {
@@ -114,6 +118,50 @@ export default function Home() {
 
   function toggleCollapsed(taskId: string) {
     setCollapsedIds((old) => old.includes(taskId) ? old.filter((id) => id !== taskId) : [...old, taskId]);
+  }
+
+  function taskIsInside(taskId: string, possibleAncestorId: string, tasks: ProjectTask[]) {
+    let parentId = tasks.find((task) => task.id === taskId)?.parentId;
+    while (parentId) {
+      if (parentId === possibleAncestorId) return true;
+      parentId = tasks.find((task) => task.id === parentId)?.parentId;
+    }
+    return false;
+  }
+
+  function moveTask(taskId: string, newParentId?: string) {
+    setBoard((old) => {
+      const task = old.tasks.find((item) => item.id === taskId);
+      const parent = newParentId ? old.tasks.find((item) => item.id === newParentId) : undefined;
+      if (!task || (newParentId && (!parent || parent.projectId !== task.projectId || newParentId === taskId || taskIsInside(newParentId, taskId, old.tasks)))) return old;
+      const movedIds = new Set(old.tasks.filter((item) => item.id === taskId || taskIsInside(item.id, taskId, old.tasks)).map((item) => item.id));
+      const moving = old.tasks.filter((item) => movedIds.has(item.id));
+      const rest = old.tasks.filter((item) => !movedIds.has(item.id));
+      const updatedMoving = moving.map((item) => item.id === taskId ? { ...item, parentId: newParentId } : item);
+      let insertAt = rest.length;
+      if (newParentId) {
+        const parentIndex = rest.findIndex((item) => item.id === newParentId);
+        insertAt = parentIndex + 1;
+        while (insertAt < rest.length && taskIsInside(rest[insertAt].id, newParentId, rest)) insertAt += 1;
+      } else {
+        const projectIndexes = rest.map((item, index) => item.projectId === task.projectId ? index : -1).filter((index) => index >= 0);
+        insertAt = projectIndexes.length ? projectIndexes[projectIndexes.length - 1] + 1 : rest.length;
+      }
+      return { ...old, tasks: [...rest.slice(0, insertAt), ...updatedMoving, ...rest.slice(insertAt)] };
+    });
+  }
+
+  function beginDrag(event: DragEvent<HTMLElement>, taskId: string) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", taskId);
+    setDraggedTaskId(taskId);
+  }
+
+  function dropOnTask(event: DragEvent<HTMLElement>, targetId: string) {
+    event.preventDefault();
+    moveTask(event.dataTransfer.getData("text/plain") || draggedTaskId, targetId);
+    setDraggedTaskId("");
+    setDragOverId("");
   }
 
   function switchProject(projectId: string) {
@@ -179,6 +227,21 @@ export default function Home() {
       activeProjectId: projectId,
       activeTaskId: firstTask.id,
     });
+  }
+
+  function addIdeas(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const ideas = String(new FormData(event.currentTarget).get("ideas") || "").split("\n").map((line) => line.replace(/^\s*[-*•\d.\[\]xX]+\s*/, "").trim()).filter(Boolean);
+    if (!ideas.length) return;
+    if (!current) {
+      const projectId = id();
+      const tasks = ideas.map((title, index): ProjectTask => ({ id: id(), projectId, title, progress: "还没开始", next: "", status: index === 0 ? "current" : "paused" }));
+      setBoard({ projects: [{ id: projectId, name: "我的主线", goal: "" }], tasks, activeProjectId: projectId, activeTaskId: tasks[0].id });
+    } else {
+      const tasks = ideas.map((title): ProjectTask => ({ id: id(), projectId: board.activeProjectId, title, progress: "还没开始", next: "", status: "paused" }));
+      setBoard((old) => ({ ...old, tasks: [...old.tasks, ...tasks] }));
+    }
+    setShowDump(false);
   }
 
   function updateCurrent(field: "progress" | "next", value: string) {
@@ -263,6 +326,8 @@ export default function Home() {
             <label>这件事叫什么？<input name="title" autoFocus placeholder="例如：准备项目书" /></label>
             <button className="primary-button" type="submit">开始</button>
           </form>
+          <button className="text-button dump-link" onClick={() => setShowDump(true)}>我想先一口气倒入很多想法</button>
+          {showDump && <dialog open className="dialog"><form method="dialog" onSubmit={addIdeas}><div className="section-heading"><h2>先全倒出来</h2><button type="button" className="close" onClick={() => setShowDump(false)}>×</button></div><label>一行一件事<textarea name="ideas" autoFocus placeholder={"整理照片\n回妈妈消息\n预约牙医"} /></label><button className="primary-button" type="submit">放进看板</button></form></dialog>}
         </section>
       </main>
     );
@@ -272,7 +337,7 @@ export default function Home() {
     <main>
       <header className="topbar">
         <div><p className="eyebrow">主线看板</p><h1>你现在在这里</h1></div>
-        <div className="project-actions"><button className="text-button" onClick={copyMarkdown}>{copied ? "已复制" : "复制 Markdown"}</button><button className="text-button" onClick={downloadMarkdown}>下载 .md</button><select aria-label="切换项目" value={project.id} onChange={(e) => switchProject(e.target.value)}>{board.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="text-button" onClick={() => setShowProject(true)}>+ 新项目</button><button className="text-button danger-button" onClick={clearBoard}>清空记录</button></div>
+        <div className="project-actions"><button className="text-button" onClick={() => setShowDump(true)}>倒入想法</button><button className="text-button" onClick={copyMarkdown}>{copied ? "已复制" : "复制 Markdown"}</button><button className="text-button" onClick={downloadMarkdown}>下载 .md</button><select aria-label="切换项目" value={project.id} onChange={(e) => switchProject(e.target.value)}>{board.projects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button className="text-button" onClick={() => setShowProject(true)}>+ 新项目</button><button className="text-button danger-button" onClick={clearBoard}>清空记录</button></div>
       </header>
 
       <section className="orientation" aria-label="当前位置">
@@ -291,18 +356,20 @@ export default function Home() {
 
       <section className="path" aria-label="任务路线">
         <p className="eyebrow">你的路线</p>
-        <p className="route-note">每件小事都能沿着“来自”往上追；点 − 可收起一整支路线。</p>
-        {routeRoots.length > 0 && <ul className="route-tree">{routeRoots.map((task) => <RouteTree key={task.id} task={task} tasks={projectTasks} currentId={current.id} collapsedIds={collapsedIds} onSelect={setCurrent} onToggle={toggleCollapsed} />)}</ul>}
+        <p className="route-note">拖一张卡到另一张卡上，就会成为它的下级任务；拖到最下方，可恢复为独立任务。</p>
+        {routeRoots.length > 0 && <ul className="route-tree">{routeRoots.map((task) => <RouteTree key={task.id} task={task} tasks={projectTasks} currentId={current.id} collapsedIds={collapsedIds} dragOverId={dragOverId} onSelect={setCurrent} onToggle={toggleCollapsed} onDragStart={beginDrag} onDragEnter={setDragOverId} onDragEnd={() => { setDraggedTaskId(""); setDragOverId(""); }} onDrop={dropOnTask} />)}</ul>}
+        <div className={`root-drop-zone ${draggedTaskId ? "is-visible" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); moveTask(event.dataTransfer.getData("text/plain") || draggedTaskId); setDraggedTaskId(""); setDragOverId(""); }}>拖到这里，成为独立任务</div>
       </section>
 
       <section className="branches">
         <div className="section-heading"><div><p className="eyebrow">从这里长出的任务</p><h2>它们都记得自己来自哪里</h2></div><button className="outline-button" onClick={() => setShowBranch(true)}>+ 新任务</button></div>
         {branches.length === 0 ? <p className="empty">暂时没有从这里长出的任务。</p> : (
-          <div className="branch-list">{branches.map((branch) => <article className="branch" key={branch.id}><div><p>{branch.title}</p><small>{branch.next}</small></div><div className="branch-actions"><button onClick={() => setCurrent(branch.id)}>去处理</button><button className="danger-button" onClick={() => deleteBranch(branch.id)}>删除</button></div></article>)}</div>
+          <div className="branch-list">{branches.map((branch) => <article className={`branch ${dragOverId === branch.id ? "is-drag-target" : ""}`} key={branch.id} draggable onDragStart={(event) => beginDrag(event, branch.id)} onDragOver={(event) => event.preventDefault()} onDragEnter={() => setDragOverId(branch.id)} onDragEnd={() => { setDraggedTaskId(""); setDragOverId(""); }} onDrop={(event) => dropOnTask(event, branch.id)}><div><p>{branch.title}</p><small>{branch.next}</small></div><div className="branch-actions"><button onClick={() => setCurrent(branch.id)}>去处理</button><button className="danger-button" onClick={() => deleteBranch(branch.id)}>删除</button></div></article>)}</div>
         )}
       </section>
 
       {showBranch && <dialog open className="dialog"><form method="dialog" onSubmit={addBranch}><div className="section-heading"><h2>从「{current.title}」长出新任务</h2><button type="button" className="close" onClick={() => setShowBranch(false)}>×</button></div><label>这件事叫什么<input name="title" autoFocus placeholder="例如：整理另一个项目的资料" /></label><button className="primary-button" type="submit">记下来源关系</button></form></dialog>}
+      {showDump && <dialog open className="dialog"><form method="dialog" onSubmit={addIdeas}><div className="section-heading"><h2>先全倒出来</h2><button type="button" className="close" onClick={() => setShowDump(false)}>×</button></div><label>一行一件事<textarea name="ideas" autoFocus placeholder={"整理照片\n回妈妈消息\n预约牙医"} /></label><button className="primary-button" type="submit">放进看板</button></form></dialog>}
       {showProject && <dialog open className="dialog"><form method="dialog" onSubmit={addProject}><div className="section-heading"><h2>新项目</h2><button type="button" className="close" onClick={() => setShowProject(false)}>×</button></div><label>项目名称<input name="name" autoFocus placeholder="例如：旅行计划" /></label><label>最终想完成什么<input name="goal" placeholder="例如：确定路线并订好行程" /></label><label>这个项目的第一步<input name="task" placeholder="例如：列出行程约束" /></label><button className="primary-button" type="submit">建立项目并进入</button></form></dialog>}
     </main>
   );
