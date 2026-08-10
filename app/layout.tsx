@@ -6,10 +6,11 @@ const assetPath = process.env.GITHUB_PAGES === "true" ? "/mainline-board" : "";
 export const metadata: Metadata = {
   title: "主线看板",
   description: "随时知道自己在哪里、要去哪里。",
+  manifest: `${assetPath}/manifest.webmanifest`,
   icons: {
-    icon: `${assetPath}/mainline-board-icon.png`,
-    shortcut: `${assetPath}/mainline-board-icon.png`,
-    apple: `${assetPath}/mainline-board-icon.png`,
+    icon: [{ url: `${assetPath}/icon-192.png`, sizes: "192x192", type: "image/png" }],
+    shortcut: `${assetPath}/icon-192.png`,
+    apple: [{ url: `${assetPath}/apple-touch-icon.png`, sizes: "180x180", type: "image/png" }],
   },
   appleWebApp: {
     capable: true,
