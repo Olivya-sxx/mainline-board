@@ -7,8 +7,14 @@ export const metadata: Metadata = {
   title: "主线看板",
   description: "随时知道自己在哪里、要去哪里。",
   icons: {
-    icon: `${assetPath}/favicon.svg`,
-    shortcut: `${assetPath}/favicon.svg`,
+    icon: `${assetPath}/mainline-board-icon.png`,
+    shortcut: `${assetPath}/mainline-board-icon.png`,
+    apple: `${assetPath}/mainline-board-icon.png`,
+  },
+  appleWebApp: {
+    capable: true,
+    title: "主线看板",
+    statusBarStyle: "default",
   },
 };
 

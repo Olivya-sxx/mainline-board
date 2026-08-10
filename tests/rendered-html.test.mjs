@@ -44,6 +44,8 @@ test("keeps the finished board free of starter preview code", async () => {
   assert.match(page, /倒入想法/);
   assert.match(page, /复制 Markdown/);
   assert.match(layout, /title: "主线看板"/);
+  assert.match(layout, /mainline-board-icon\.png/);
+  assert.match(layout, /appleWebApp/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.deepEqual(previewFiles, []);
 });
