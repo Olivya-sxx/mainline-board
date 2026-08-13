@@ -26,9 +26,10 @@ test("serves the mainline board shell", async () => {
 });
 
 test("keeps the finished board free of starter preview code", async () => {
-  const [page, layout, packageJson, previewFiles] = await Promise.all([
+  const [page, layout, styles, packageJson, previewFiles] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readdir(new URL("../app/_sites-preview", import.meta.url)),
   ]);
@@ -49,6 +50,8 @@ test("keeps the finished board free of starter preview code", async () => {
   assert.match(layout, /apple-touch-icon\.png/);
   assert.match(layout, /manifest\.webmanifest/);
   assert.match(layout, /appleWebApp/);
+  assert.match(styles, /\.dialog \{ position:fixed; top:50%; left:50%/);
+  assert.match(styles, /\.setup \{[^}]*min-height:100dvh;[^}]*place-items:center/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.deepEqual(previewFiles, []);
 });
