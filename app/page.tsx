@@ -246,13 +246,6 @@ export default function Home() {
     setShowDump(false);
   }
 
-  function updateCurrent(field: "progress" | "next", value: string) {
-    setBoard((old) => ({
-      ...old,
-      tasks: old.tasks.map((task) => task.id === old.activeTaskId ? { ...task, [field]: value } : task),
-    }));
-  }
-
   function routeMarkdown() {
     function taskLine(task: ProjectTask, depth: number): string[] {
       const mark = task.status === "done" ? "x" : " ";
@@ -350,8 +343,6 @@ export default function Home() {
       <section className="current-card">
         <p className="eyebrow">{current.parentId ? "这件事来自上一条线" : "当前任务 · 只保留一个"}</p>
         <h2>{current.title}</h2>
-        <label>我做到哪里了<textarea value={current.progress} onChange={(e) => updateCurrent("progress", e.target.value)} /></label>
-        <label className="next">我现在只做这一步<textarea value={current.next} onChange={(e) => updateCurrent("next", e.target.value)} /></label>
         {current.parentId && parentTask && <button type="button" className="return-button" onClick={() => finishAndReturn(current.id, parentTask.id)}>完成并回到「{parentTask.title}」</button>}
         <button type="button" className="delete-current-button" onClick={() => deleteBranch(current.id)}>{current.parentId ? "删除这条岔路" : "删除这个主任务"}</button>
       </section>
