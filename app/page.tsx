@@ -71,6 +71,8 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [draggedTaskId, setDraggedTaskId] = useState("");
   const [dragOverId, setDragOverId] = useState("");
+  const [showKickoff, setShowKickoff] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(60);
 
   useEffect(() => {
     const saved = localStorage.getItem(storageKey) || localStorage.getItem(previousStorageKey);
@@ -90,6 +92,12 @@ export default function Home() {
   useEffect(() => {
     if (ready) localStorage.setItem(storageKey, JSON.stringify(board));
   }, [board, ready]);
+
+  useEffect(() => {
+    if (!showKickoff || secondsLeft === 0) return;
+    const timer = window.setTimeout(() => setSecondsLeft((seconds) => seconds - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [showKickoff, secondsLeft]);
 
   const current = board.tasks.find((task) => task.id === board.activeTaskId) ?? board.tasks[0];
   const project = board.projects.find((item) => item.id === board.activeProjectId) ?? board.projects[0];
@@ -162,6 +170,16 @@ export default function Home() {
     moveTask(event.dataTransfer.getData("text/plain") || draggedTaskId, targetId);
     setDraggedTaskId("");
     setDragOverId("");
+  }
+
+  function startKickoff() {
+    setSecondsLeft(60);
+    setShowKickoff(true);
+  }
+
+  function closeKickoff() {
+    setShowKickoff(false);
+    setSecondsLeft(60);
   }
 
   function switchProject(projectId: string) {
@@ -343,6 +361,7 @@ export default function Home() {
       <section className="current-card">
         <p className="eyebrow">{current.parentId ? "这件事来自上一条线" : "当前任务 · 只保留一个"}</p>
         <h2>{current.title}</h2>
+        <button type="button" className="kickoff-button" onClick={startKickoff}>启动 1 分钟</button>
         {current.parentId && parentTask && <button type="button" className="return-button" onClick={() => finishAndReturn(current.id, parentTask.id)}>完成并回到「{parentTask.title}」</button>}
         <button type="button" className="delete-current-button" onClick={() => deleteBranch(current.id)}>{current.parentId ? "删除这条岔路" : "删除这个主任务"}</button>
       </section>
@@ -362,6 +381,7 @@ export default function Home() {
       </section>
 
       {showBranch && <dialog open className="dialog"><form method="dialog" onSubmit={addBranch}><div className="section-heading"><h2>从「{current.title}」长出新任务</h2><button type="button" className="close" onClick={() => setShowBranch(false)}>×</button></div><label>这件事叫什么<input name="title" autoFocus placeholder="例如：整理另一个项目的资料" /></label><button className="primary-button" type="submit">记下来源关系</button></form></dialog>}
+      {showKickoff && <dialog open className="dialog kickoff-dialog"><section><p className="eyebrow">先碰一下就够了</p><h2>{current.title}</h2><strong>{secondsLeft === 0 ? "已经开始了" : `00:${String(secondsLeft).padStart(2, "0")}`}</strong><p>{secondsLeft === 0 ? "不用现在做完，继续做下去就好。" : "这一分钟，只做第一下。"}</p>{secondsLeft === 0 ? <div><button className="primary-button" type="button" onClick={closeKickoff}>继续做</button><button className="text-button" type="button" onClick={startKickoff}>再给我 1 分钟</button></div> : <button className="text-button" type="button" onClick={closeKickoff}>先回看板</button>}</section></dialog>}
       {showDump && <dialog open className="dialog"><form method="dialog" onSubmit={addIdeas}><div className="section-heading"><h2>先全倒出来</h2><button type="button" className="close" onClick={() => setShowDump(false)}>×</button></div><label>一行一件事<textarea name="ideas" autoFocus placeholder={"整理照片\n回妈妈消息\n预约牙医"} /></label><button className="primary-button" type="submit">放进看板</button></form></dialog>}
       {showProject && <dialog open className="dialog"><form method="dialog" onSubmit={addProject}><div className="section-heading"><h2>新项目</h2><button type="button" className="close" onClick={() => setShowProject(false)}>×</button></div><label>项目名称<input name="name" autoFocus placeholder="例如：旅行计划" /></label><label>最终想完成什么<input name="goal" placeholder="例如：确定路线并订好行程" /></label><label>这个项目的第一步<input name="task" placeholder="例如：列出行程约束" /></label><button className="primary-button" type="submit">建立项目并进入</button></form></dialog>}
     </main>
